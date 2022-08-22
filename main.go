@@ -10,8 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gophercises/quiet_hn/hn"
+	"github.com/atis/quiet_hn/hn"
 )
+
+var vmi []string = []string{"machine learning", "ml", "artificial intelligence", "ai",
+	"deep learning", "dl", "neural network", "nn", "computer vision", "cv"}
+
 
 func main() {
 	// parse flags
@@ -37,20 +41,9 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 			http.Error(w, "Failed to load top stories", http.StatusInternalServerError)
 			return
 		}
-		var stories []item
-		for _, id := range ids {
-			hnItem, err := client.GetItem(id)
-			if err != nil {
-				continue
-			}
-			item := parseHNItem(hnItem)
-			if isStoryLink(item) {
-				stories = append(stories, item)
-				if len(stories) >= numStories {
-					break
-				}
-			}
-		}
+
+		stories := getStories(ids, numStories, client)
+
 		data := templateData{
 			Stories: stories,
 			Time:    time.Now().Sub(start),
@@ -61,6 +54,39 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 			return
 		}
 	})
+}
+
+func getStories(ids []int, numStories int, client hn.Client) []item {
+	var stories []item
+	ch := make(chan hn.Result)
+
+	for i, id := range ids {
+		go client.GetItem(i, id, ch)
+
+		//using waitgroups to check if more routines needed or need stopping?
+		if i%30 == 0 {
+			time.Sleep(time.Second * 3)
+		}
+
+		if len(stories) >= numStories || i > 40 {
+			break
+		}
+		i++
+	}
+	for result := range ch {
+		if result.Error != nil {
+			continue
+		}
+		item := parseHNItem(result.Item)
+
+		if isStoryLink(item) {
+			stories = append(stories, item)
+			if len(stories) >= numStories {
+				break
+			}
+		}
+	}
+	return stories
 }
 
 func isStoryLink(item item) bool {

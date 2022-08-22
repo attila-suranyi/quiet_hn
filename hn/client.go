@@ -17,6 +17,12 @@ type Client struct {
 	apiBase string
 }
 
+type Result struct {
+	Idx   int
+	Item  Item
+	Error error
+}
+
 // Making the Client zero value useful without forcing users to do something
 // like `NewClient()`
 func (c *Client) defaultify() {
@@ -48,20 +54,20 @@ func (c *Client) TopItems() ([]int, error) {
 }
 
 // GetItem will return the Item defined by the provided ID.
-func (c *Client) GetItem(id int) (Item, error) {
+func (c *Client) GetItem(idx int, id int, ch chan Result) {
 	c.defaultify()
 	var item Item
 	resp, err := http.Get(fmt.Sprintf("%s/item/%d.json", c.apiBase, id))
 	if err != nil {
-		return item, err
+		ch <- Result{Idx: idx, Item: item, Error: err}
 	}
 	defer resp.Body.Close()
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(&item)
 	if err != nil {
-		return item, err
+		ch <- Result{Idx: idx, Item: item, Error: err}
 	}
-	return item, nil
+	ch <- Result{Idx: idx, Item: item, Error: nil}
 }
 
 // Item represents a single item returned by the HN API. This can have a type
